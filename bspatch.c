@@ -34,7 +34,9 @@ __FBSDID("$FreeBSD: src/usr.bin/bsdiff/bspatch/bspatch.c,v 1.1 2005/08/06 01:59:
 #include <err.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdarg.h>
 
+#define dbg_printf(...)		// printf(__VA_ARGS__)
 static off_t offtin(u_char *buf);
 
 #define SPLIT_LEN	4096
@@ -60,7 +62,7 @@ static void freeBuffer( void *buf )
 	free(buf);
 }
 
-static void *openOldFirm( const char *name, size_t *size )
+static u_char *openOldFirm( const char *name, size_t *size )
 {
 	void *buf;
 	int fd;
@@ -70,8 +72,9 @@ static void *openOldFirm( const char *name, size_t *size )
 	return buf;
 }
 
-static void closeOldFirm( void )
+static void closeOldFirm( u_char *buf )
 {
+	free(buf);
 	close(oldfd);
 }
 
@@ -137,7 +140,7 @@ static size_t openPatchFirm( const char *name )
 	if( newsize<0 ){
 		errx(1,"Corrupt patch3\n");
 	}
-	printf("newsize %d, bzctrllen %d, bzdatalen %d\n", newsize, bzctrllen, bzdatalen );
+	dbg_printf("newsize %ld, bzctrllen %ld, bzdatalen %ld\n", newsize, bzctrllen, bzdatalen );
 
 	/* 差分データパートオープン */
 	if ((patchDiff = fopen(name, "r")) == NULL){
@@ -161,21 +164,21 @@ static size_t openPatchFirm( const char *name )
 /* 制御データ取得 */
 static size_t getPatchFirmCont( u_char *buf, size_t size )
 {
-	printf("getPatchFirm: %d\n", size );
+	dbg_printf("getPatchFirm: %ld\n", size );
 	return fread(buf, 1, size, patchCont);
 }
 
 /* 差分データ取得 */
 static size_t getPatchFirmDiff( u_char *buf, size_t size )
 {
-	printf("getPatchFirm: %d\n", size );
+	dbg_printf("getPatchFirm: %ld\n", size );
 	return fread(buf, 1, size, patchDiff);
 }
 
 /* 一致データ取得 */
 static size_t getPatchFirmExtra( u_char *buf, size_t size )
 {
-	printf("getPatchFirm: %d\n", size );
+	dbg_printf("getPatchFirm: %ld\n", size );
 	return fread(buf, 1, size, patchExtra);
 }
 
@@ -234,11 +237,12 @@ int main(int argc,char * argv[])
 		};
 		difflen = ctrl[0];	/* 差分全体サイズ */
 		splitlen = (difflen>SPLIT_LEN)? SPLIT_LEN:difflen;	/* 差分分割サイズ */
-printf("1:difflen %u, splitlen %u\n", difflen, splitlen );
+		dbg_printf("1:difflen %ld, splitlen %ld\n", difflen, splitlen );
 
 		/* Sanity-check */
-		if(newpos+ctrl[0]>newsize)
+		if(newpos+ctrl[0]>newsize){
 			errx(1,"Corrupt patch5\n");
+		}
 
 		/* Read diff string */
 		lenread = getPatchFirmDiff(new, splitlen );
@@ -255,7 +259,7 @@ printf("1:difflen %u, splitlen %u\n", difflen, splitlen );
 					difflen -= SPLIT_LEN;
 					splitlen = (difflen>SPLIT_LEN)? SPLIT_LEN:difflen;
 					getPatchFirmDiff(new, splitlen );
-printf("2:difflen %u, splitlen %u, j %u\n", difflen, splitlen, j );
+					dbg_printf("2:difflen %ld, splitlen %ld, j %ld\n", difflen, splitlen, j );
 				}
 				new[j]+=old[oldpos+i];
 			}
@@ -268,8 +272,9 @@ printf("2:difflen %u, splitlen %u, j %u\n", difflen, splitlen, j );
 		oldpos+=ctrl[0];
 
 		/* Sanity-check */
-		if(newpos+ctrl[1]>newsize)
+		if(newpos+ctrl[1]>newsize){
 			errx(1,"Corrupt patch7\n");
+		}
 
 		/* Read extra string (★一致パート分割対応) */
 		for(extralen = ctrl[1]; extralen; extralen -= splitlen ){
@@ -288,7 +293,7 @@ printf("2:difflen %u, splitlen %u, j %u\n", difflen, splitlen, j );
 
 	/* close each firm */
 	closePatchFirm();
-	closeOldFirm();
+	closeOldFirm(old);
 	closeNewFirm(new);
 
 	return 0;
